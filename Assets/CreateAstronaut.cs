@@ -7,26 +7,35 @@ using System;
 using System.Threading;
 using OpenQA.Selenium.Support.UI;
 
-public class GameInfo : MonoBehaviour
+public class GameInfo
 {
 	public string name;
 	public int viewNum;
+	public int radius;
 	public int objectNum;
 	public Color color;
-	public int posX;
-	public int posZ;
+	public Vector3 pos;
+	public float vel;
+	public Vector3 dir;
+	public GameObject Ground;
+	public Rigidbody GroundRigid;
+	public bool isFalling;
+	public GameObject InfoWindow;
 
 	public GameInfo(string name_, int viewNum_)
 	{
 		name = name_;
 		viewNum = viewNum_;
-		//color = UnityEngine.Random.ColorHSV(0.0f, 1.0f);
+		
+		color = UnityEngine.Random.ColorHSV(0.0f, 1.0f);
+		vel = UnityEngine.Random.Range(-1.0f, 1.0f);
+		dir = new Vector3(UnityEngine.Random.Range(-1.0f, 1.0f), UnityEngine.Random.Range(-1.0f, 1.0f), UnityEngine.Random.Range(-1.0f, 1.0f));
 		//posX = UnityEngine.Random.Range(-40, 40);
 		//posZ = UnityEngine.Random.Range(-40, 40);
 	}
 }
 
-public class TwitchCrawler : MonoBehaviour
+public class TwitchCrawler
 {
 	public static int totalObjectNum = 500;
 	public List<GameInfo> gameList = new List<GameInfo>();
@@ -34,7 +43,7 @@ public class TwitchCrawler : MonoBehaviour
 	public void getRatio()
 	{
 		int result = 0;
-		int map_width = 100;
+		int map_width = 300;
 
 		for (int i = 0; i < gameList.Count; i++)
 		{
@@ -44,12 +53,13 @@ public class TwitchCrawler : MonoBehaviour
 		for (int i = 0; i < gameList.Count; i++)
 		{
 			gameList[i].objectNum = (int)(((double)gameList[i].viewNum / (double)result) * totalObjectNum);
+			gameList[i].radius = (int)Math.Sqrt(gameList[i].objectNum);
 
-			float color_range = (float)(i + 1) / (gameList.Count + 2);
-			gameList[i].color = UnityEngine.Random.ColorHSV(color_range, color_range, 1.0f, 1.0f);
-
-			gameList[i].posX = (int)((float)(i % 5) / 5 * map_width) + map_width / 10 - 50;
-			gameList[i].posZ = (int)((float)(i / 5) / 5 * map_width) + map_width / 10 - 50;
+			float x = UnityEngine.Random.Range(map_width * -0.5f, map_width * 0.5f);
+			float y = UnityEngine.Random.Range(map_width * -0.5f, map_width * 0.5f);
+			float z = UnityEngine.Random.Range(map_width * -0.5f, map_width * 0.5f);
+			gameList[i].pos = new Vector3(x, y, z);
+			
 		}
 	}
 
@@ -124,6 +134,12 @@ public class CreateAstronaut : MonoBehaviour
 	public TwitchCrawler crawler;
 	public List<List<GameObject>> status = new List<List<GameObject>>();
 
+	public GameObject Ground;
+	public List<GameObject> Grounds = new List<GameObject>();
+	public float min_Distance = 30f;
+
+	public GameObject infoWindow;
+	public GameObject Player;
 
     // Start is called before the first frame update
     void Start()
@@ -135,13 +151,41 @@ public class CreateAstronaut : MonoBehaviour
 		for (int i = 0; i < crawler.gameList.Count; i++)
         {
 			status.Add(new List<GameObject>());
+			
+			//initiallize Ground(spaceship)
+			crawler.gameList[i].Ground = Instantiate(Ground, crawler.gameList[i].pos, Quaternion.identity);
+			crawler.gameList[i].Ground.transform.localScale += new Vector3(crawler.gameList[i].radius, crawler.gameList[i].radius, crawler.gameList[i].radius);
+
+			GameObject GroundBody = crawler.gameList[i].Ground.transform.GetChild(0).gameObject;
+			GroundBody.GetComponent<Renderer>().materials[0].color = crawler.gameList[i].color;
+			crawler.gameList[i].GroundRigid = crawler.gameList[i].Ground.GetComponent<Rigidbody>();
+
+			//initialize InfoWindow
+			crawler.gameList[i].InfoWindow = Instantiate(infoWindow, crawler.gameList[i].pos + new Vector3(0, crawler.gameList[i].radius, 0), Quaternion.identity);
+			crawler.gameList[i].InfoWindow.transform.rotation = Player.transform.rotation;
+
+			crawler.gameList[i].InfoWindow.transform.SetParent(crawler.gameList[i].Ground.transform, true);
+			crawler.gameList[i].InfoWindow.transform.position += new Vector3(0, crawler.gameList[i].radius + 10f, 0);
+
+			// info - title
+
+			crawler.gameList[i].InfoWindow.transform.GetChild(0).GetComponent<TextMesh>().text
+				= crawler.gameList[i].name.Length > 18 ? crawler.gameList[i].name.Substring(0, 18) + "..." : crawler.gameList[i].name;
+			// info - Watching num
+			crawler.gameList[i].InfoWindow.transform.GetChild(2).GetComponent<TextMesh>().text = (crawler.gameList[i].viewNum).ToString();
+			// info - rank
+			crawler.gameList[i].InfoWindow.transform.GetChild(4).GetComponent<TextMesh>().text = (i + 1).ToString();
+
+			//initialize Astro
 			for (int j = 0; j < crawler.gameList[i].objectNum; j++)
             {
-				float x = crawler.gameList[i].posX + UnityEngine.Random.Range(-10, 10);
-				float z = crawler.gameList[i].posZ + UnityEngine.Random.Range(-10, 10);
-				GameObject newPrefab = Instantiate(projectile, new Vector3(x, 0, z), Quaternion.identity);
+				float x = crawler.gameList[i].pos.x + UnityEngine.Random.Range(crawler.gameList[i].radius * -1.5f, crawler.gameList[i].radius * 1.5f);
+				float y = crawler.gameList[i].pos.y + 0.2f;
+				float z = crawler.gameList[i].pos.z + UnityEngine.Random.Range(crawler.gameList[i].radius * -1.5f, crawler.gameList[i].radius * 1.5f);
+				GameObject newPrefab = Instantiate(projectile, new Vector3(x, y, z), Quaternion.identity);
 
-				status[i].Add(newPrefab);
+				//status[i].Add(newPrefab);
+				newPrefab.transform.SetParent(crawler.gameList[i].Ground.transform, true);
 
 				//change color
 				GameObject child = newPrefab.transform.GetChild(1).gameObject;
@@ -154,12 +198,37 @@ public class CreateAstronaut : MonoBehaviour
 				TextMesh newText = textChild.GetComponent<TextMesh>();
 				newText.text = crawler.gameList[i].name;
 			}
+			
 		}
     }
 
     // Update is called once per frame
     void Update()
     {
-        
-    }
+		// Move SpaceShip
+		for (int i = 0; i < crawler.gameList.Count; i++)
+        {
+			crawler.gameList[i].Ground.transform.position += crawler.gameList[i].dir / 60;
+			crawler.gameList[i].InfoWindow.transform.rotation = Player.transform.rotation;
+			
+			for(int j = 0; j < crawler.gameList.Count; j++)
+            {
+				if (i != j)
+                {
+					if ((crawler.gameList[i].radius + crawler.gameList[j].radius) * 2 > Vector3.Distance(crawler.gameList[i].Ground.transform.position, crawler.gameList[j].Ground.transform.position))
+					{
+						if (!crawler.gameList[i].isFalling)
+						{
+							crawler.gameList[i].dir = crawler.gameList[i].Ground.transform.position - crawler.gameList[j].Ground.transform.position;
+							crawler.gameList[i].dir /= 60f;
+							crawler.gameList[i].isFalling = true;
+						}
+					}
+					else crawler.gameList[i].isFalling = false;
+                }
+            }
+			
+		}
+
+	}
 }
